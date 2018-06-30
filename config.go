@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/hex"
 	"flag"
 	"fmt"
@@ -27,6 +28,13 @@ func megaIntEnvConfig(f *int, name string) {
 func strEnvConfig(s *string, name string) {
 	if env := os.Getenv(name); len(env) > 0 {
 		*s = env
+	}
+}
+
+func boolEnvConfig(b *bool, name string) {
+	*b = false
+	if env, err := strconv.ParseBool(os.Getenv(name)); err == nil {
+		*b = env
 	}
 }
 
@@ -69,6 +77,7 @@ func hexFileConfig(b *[]byte, filepath string) {
 type config struct {
 	Bind            string
 	ReadTimeout     int
+	WaitTimeout     int
 	WriteTimeout    int
 	DownloadTimeout int
 	Concurrency     int
@@ -86,7 +95,14 @@ type config struct {
 
 	Secret string
 
+	AllowOrigin string
+
 	LocalFileSystemRoot string
+
+	ETagEnabled   bool
+	ETagSignature []byte
+
+	BaseURL string
 }
 
 var conf = config{
@@ -100,6 +116,7 @@ var conf = config{
 	MaxSrcResolution: 16800000,
 	Quality:          80,
 	GZipCompression:  5,
+	ETagEnabled:      false,
 }
 
 func init() {
@@ -134,7 +151,13 @@ func init() {
 
 	strEnvConfig(&conf.Secret, "IMGPROXY_SECRET")
 
+	strEnvConfig(&conf.AllowOrigin, "IMGPROXY_ALLOW_ORIGIN")
+
 	strEnvConfig(&conf.LocalFileSystemRoot, "IMGPROXY_LOCAL_FILESYSTEM_ROOT")
+
+	boolEnvConfig(&conf.ETagEnabled, "IMGPROXY_USE_ETAG")
+
+	strEnvConfig(&conf.BaseURL, "IMGPROXY_BASE_URL")
 
 	if len(conf.Key) == 0 {
 		log.Fatalln("Key is not defined")
@@ -164,7 +187,7 @@ func init() {
 	}
 
 	if conf.MaxClients <= 0 {
-		conf.MaxClients = conf.Concurrency * 5
+		conf.MaxClients = conf.Concurrency * 10
 	}
 
 	if conf.TTL <= 0 {
@@ -203,6 +226,13 @@ func init() {
 		if conf.LocalFileSystemRoot == "/" {
 			log.Print("Exposing root via IMGPROXY_LOCAL_FILESYSTEM_ROOT is unsafe")
 		}
+	}
+
+	if conf.ETagEnabled {
+		conf.ETagSignature = make([]byte, 16)
+		rand.Read(conf.ETagSignature)
+		log.Printf("ETag support is activated. The random value was generated to be used for ETag calculation: %s\n",
+			fmt.Sprintf("%x", conf.ETagSignature))
 	}
 
 	initVips()

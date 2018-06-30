@@ -10,7 +10,7 @@ type timer struct {
 	Timer     <-chan time.Time
 }
 
-func startTimer(dt time.Duration) *timer {
+func startTimer(dt time.Duration, info string) *timer {
 	return &timer{time.Now(), time.After(dt)}
 }
 

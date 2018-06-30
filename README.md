@@ -142,14 +142,16 @@ $ xxd -g 2 -l 64 -p /dev/random | tr -d '\n'
 * `IMGPROXY_WRITE_TIMEOUT` — the maximum duration (in seconds) for writing the response. Default: `10`;
 * `IMGPROXY_DOWNLOAD_TIMEOUT` — the maximum duration (in seconds) for downloading the source image. Default: `5`;
 * `IMGPROXY_CONCURRENCY` — the maximum number of image requests to be processed simultaneously. Default: double number of CPU cores;
-* `IMGPROXY_MAX_CLIENTS` — the maximum number of simultaneous active connections. Default: `IMGPROXY_CONCURRENCY * 5`;
+* `IMGPROXY_MAX_CLIENTS` — the maximum number of simultaneous active connections. Default: `IMGPROXY_CONCURRENCY * 10`;
 * `IMGPROXY_TTL` — duration in seconds sent in `Expires` and `Cache-Control: max-age` headers. Default: `3600` (1 hour);
+* `IMGPROXY_USE_ETAG` — when true, enables using [ETag](https://en.wikipedia.org/wiki/HTTP_ETag) header for the cache control. Default: false;
 * `IMGPROXY_LOCAL_FILESYSTEM_ROOT` — root of the local filesystem. See [Serving local files](#serving-local-files). Keep empty to disable serving of local files.
 
 #### Security
 
 imgproxy protects you from so-called image bombs. Here is how you can specify maximum image dimensions and resolution which you consider reasonable:
 
+* `IMGPROXY_ALLOW_ORIGIN` - when set, enables CORS headers with provided origin. CORS headers are disabled by default.
 * `IMGPROXY_MAX_SRC_DIMENSION` — the maximum dimensions of the source image, in pixels, for both width and height. Images with larger real size will be rejected. Default: `8192`;
 * `IMGPROXY_MAX_SRC_RESOLUTION` — the maximum resolution of the source image, in megapixels. Images with larger real size will be rejected. Default: `16.8`;
 
@@ -161,6 +163,10 @@ You can also specify a secret to enable authorization with the HTTP `Authorizati
 
 * `IMGPROXY_QUALITY` — quality of the resulting image, percentage. Default: `80`;
 * `IMGPROXY_GZIP_COMPRESSION` — GZip compression level. Default: `5`;
+
+#### Miscellaneous
+
+* `IMGPROXY_BASE_URL` - base URL part which will be added to every requestsd image URL. For example, if base URL is `http://example.com/images` and `/path/to/image.png` is requested, imgproxy will download the image from `http://example.com/images/path/to/image.png`. Default: blank.
 
 ## Generating the URL
 
@@ -229,7 +235,7 @@ imgproxy supports only the most popular image formats of the moment: PNG, JPEG, 
 
 ## Deployment
 
-There is a special endpoint `/health`, which returns HTTP Status `200 OK` after server successfully starts. This can be used to check container readiness.   
+There is a special endpoint `/health`, which returns HTTP Status `200 OK` after server successfully starts. This can be used to check container readiness.
 
 ## Author
 
