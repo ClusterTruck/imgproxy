@@ -1,46 +1,113 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"log"
-	"net"
-	"net/http"
 	"os"
 	"os/signal"
-	"runtime/debug"
+	"runtime"
+	"syscall"
 	"time"
-
-	"golang.org/x/net/netutil"
 )
 
-func main() {
-	// Force garbage collection
+const version = "2.16.3"
+
+type ctxKey string
+
+func initialize() error {
+	log.SetOutput(os.Stdout)
+
+	if err := initLog(); err != nil {
+		return err
+	}
+
+	if err := configure(); err != nil {
+		return err
+	}
+
+	if err := initNewrelic(); err != nil {
+		return err
+	}
+
+	initPrometheus()
+
+	if err := initDownloading(); err != nil {
+		return err
+	}
+
+	initErrorsReporting()
+
+	if err := initVips(); err != nil {
+		return err
+	}
+
+	if err := checkPresets(conf.Presets); err != nil {
+		shutdownVips()
+		return err
+	}
+
+	return nil
+}
+
+func run() error {
+	if err := initialize(); err != nil {
+		return err
+	}
+
+	defer shutdownVips()
+
 	go func() {
-		for _ = range time.Tick(10 * time.Second) {
-			debug.FreeOSMemory()
+		var logMemStats = len(os.Getenv("IMGPROXY_LOG_MEM_STATS")) > 0
+
+		for range time.Tick(time.Duration(conf.FreeMemoryInterval) * time.Second) {
+			freeMemory()
+
+			if logMemStats {
+				var m runtime.MemStats
+				runtime.ReadMemStats(&m)
+				logDebug("MEMORY USAGE: Sys=%d HeapIdle=%d HeapInuse=%d", m.Sys/1024/1024, m.HeapIdle/1024/1024, m.HeapInuse/1024/1024)
+			}
 		}
 	}()
 
-	l, err := net.Listen("tcp", conf.Bind)
-	if err != nil {
-		log.Fatal(err)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	if prometheusEnabled {
+		if err := startPrometheusServer(cancel); err != nil {
+			return err
+		}
 	}
 
-	s := &http.Server{
-		Handler:        newHTTPHandler(),
-		ReadTimeout:    time.Duration(conf.ReadTimeout) * time.Second,
-		MaxHeaderBytes: 1 << 20,
+	s, err := startServer(cancel)
+	if err != nil {
+		return err
 	}
+	defer shutdownServer(s)
 
 	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, os.Kill)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
-	go func() {
-		log.Printf("Starting server at %s\n", conf.Bind)
-		log.Fatal(s.Serve(netutil.LimitListener(l, conf.MaxClients)))
-	}()
+	select {
+	case <-ctx.Done():
+	case <-stop:
+	}
 
-	<-stop
+	return nil
+}
 
-	shutdownVips()
-	shutdownServer(s)
+func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "health":
+			os.Exit(healthcheck())
+		case "version":
+			fmt.Println(version)
+			os.Exit(0)
+		}
+	}
+
+	if err := run(); err != nil {
+		logFatal(err.Error())
+	}
 }

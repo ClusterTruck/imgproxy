@@ -1,10 +1,15 @@
 .DS_Store
 .git
 tmp/
+.tmp/
 imgproxy
 
-glide.yaml
-glide.lock
-
+docs/
+docker/
+examples/
 LICENSE
 README.md
+CHANGELOG.md
+
+Dockerfile
+.dockerignore

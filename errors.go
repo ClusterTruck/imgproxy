@@ -10,32 +10,60 @@ type imgproxyError struct {
 	StatusCode    int
 	Message       string
 	PublicMessage string
+	Unexpected    bool
+
+	stack []uintptr
 }
 
-func (e imgproxyError) Error() string {
+func (e *imgproxyError) Error() string {
 	return e.Message
 }
 
-func newError(status int, msg string, pub string) imgproxyError {
-	return imgproxyError{status, msg, pub}
+func (e *imgproxyError) FormatStack() string {
+	if e.stack == nil {
+		return ""
+	}
+
+	return formatStack(e.stack)
 }
 
-func newUnexpectedError(err error, skip int) imgproxyError {
-	msg := fmt.Sprintf("Unexpected error: %s\n%s", err, stacktrace(skip+1))
-	return imgproxyError{500, msg, "Internal error"}
+func (e *imgproxyError) StackTrace() []uintptr {
+	return e.stack
 }
 
-var (
-	invalidSecretErr = newError(403, "Invalid secret", "Forbidden")
-	invalidMethodErr = newError(422, "Invalid request method", "Method doesn't allowed")
-)
+func (e *imgproxyError) SetUnexpected(u bool) *imgproxyError {
+	e.Unexpected = u
+	return e
+}
 
-func stacktrace(skip int) string {
-	callers := make([]uintptr, 10)
-	n := runtime.Callers(skip+1, callers)
+func newError(status int, msg string, pub string) *imgproxyError {
+	return &imgproxyError{
+		StatusCode:    status,
+		Message:       msg,
+		PublicMessage: pub,
+	}
+}
 
-	lines := make([]string, n)
-	for i, pc := range callers[:n] {
+func newUnexpectedError(msg string, skip int) *imgproxyError {
+	return &imgproxyError{
+		StatusCode:    500,
+		Message:       msg,
+		PublicMessage: "Internal error",
+		Unexpected:    true,
+
+		stack: callers(skip + 3),
+	}
+}
+
+func callers(skip int) []uintptr {
+	stack := make([]uintptr, 10)
+	n := runtime.Callers(skip, stack)
+	return stack[:n]
+}
+
+func formatStack(stack []uintptr) string {
+	lines := make([]string, len(stack))
+	for i, pc := range stack {
 		f := runtime.FuncForPC(pc)
 		file, line := f.FileLine(pc)
 		lines[i] = fmt.Sprintf("%s:%d %s", file, line, f.Name())
